@@ -1,28 +1,29 @@
 VOLTORB = 4
 DEFAULT_MAX_VALUE = 3
 
-function IterCombinations(length, total, voltorbs, max_value)
+function IterCombinations(length, total, voltorbs, max_value, mask)
     return coroutine.wrap(function()
         if total < 0 or voltorbs < 0 then
             return
         end
 
         if length == 1 then
-            if 0 < total and total <= max_value and voltorbs == 0 then
-                coroutine.yield({ total })
-            elseif total == 0 and voltorbs == 1 then
-                coroutine.yield({ VOLTORB })
+            if 0 < total and total <= max_value and voltorbs == 0 and mask[1][total] then
+                coroutine.yield { total }
+            elseif total == 0 and voltorbs == 1 and mask[1][VOLTORB] then
+                coroutine.yield { VOLTORB }
             else
                 return
             end
         else
+            local tail = { unpack(mask, 2) }
             for value = 1, max_value do
-                for combo in IterCombinations(length - 1, total - value, voltorbs, max_value) do
+                for combo in IterCombinations(length - 1, total - value, voltorbs, max_value, tail) do
                     table.insert(combo, value)
                     coroutine.yield(combo)
                 end
             end
-            for combo in IterCombinations(length - 1, total, voltorbs - 1, max_value) do
+            for combo in IterCombinations(length - 1, total, voltorbs - 1, max_value, tail) do
                 table.insert(combo, VOLTORB)
                 coroutine.yield(combo)
             end
@@ -54,27 +55,51 @@ local function new_lookup()
     return lookup
 end
 
-local function search_helper(rows, columns, column_totals, row_totals, column_voltorbs, row_voltorbs, max_value, lookup)
-    local key = lookup_key(rows, columns, column_totals, row_totals, column_voltorbs, row_voltorbs, max_value)
+
+local function create_mask(rows, columns, max_value, fill)
+    local mask = {}
+    for i = 1, rows do
+        local row = {}
+        mask[i] = row
+        for j = 1, columns do
+            local values = {}
+            row[j] = values
+            for value = 1, max_value do
+                values[value] = fill
+            end
+            values[VOLTORB] = fill
+        end
+    end
+
+    return mask
+end
+
+local function search_helper(
+    rows,
+    columns,
+    column_totals,
+    row_totals,
+    column_voltorbs,
+    row_voltorbs,
+    max_value,
+    mask,
+    lookup
+)
+    local key = lookup_key(
+        rows,
+        columns,
+        column_totals,
+        row_totals,
+        column_voltorbs,
+        row_voltorbs,
+        max_value
+    )
     local ret = lookup[key]
     if ret ~= nil then
         return ret
     end
 
-    local probs = {}
-    for _ = 1, rows do
-        local row = {}
-        table.insert(probs, row)
-        for _ = 1, columns do
-            local values = {}
-            table.insert(row, values)
-            for value = 1, max_value do
-                values[value] = 0
-            end
-            values[VOLTORB] = 0
-        end
-    end
-
+    local probs = create_mask(rows, columns, max_value, 0)
     local any = false
     if rows == 1 and columns == 1 then
         local column_total = unpack(column_totals)
@@ -104,7 +129,9 @@ local function search_helper(rows, columns, column_totals, row_totals, column_vo
         row_totals = { unpack(row_totals, 2) }
         local voltorbs = row_voltorbs[1]
         row_voltorbs = { unpack(row_voltorbs, 2) }
-        for row in IterCombinations(columns, total, voltorbs, max_value) do
+        local row_mask = mask[1]
+        mask = { unpack(mask, 2) }
+        for row in IterCombinations(columns, total, voltorbs, max_value, row_mask) do
             local new_column_totals = { unpack(column_totals) }
             local new_column_voltorbs = { unpack(column_voltorbs) }
             for i, value in ipairs(row) do
@@ -122,6 +149,7 @@ local function search_helper(rows, columns, column_totals, row_totals, column_vo
                 new_column_voltorbs,
                 row_voltorbs,
                 max_value,
+                mask,
                 lookup
             )
 
@@ -144,7 +172,12 @@ local function search_helper(rows, columns, column_totals, row_totals, column_vo
         column_totals = { unpack(column_totals, 2) }
         local voltorbs = column_voltorbs[1]
         column_voltorbs = { unpack(column_voltorbs, 2) }
-        for column in IterCombinations(rows, total, voltorbs, max_value) do
+        local column_mask = {}
+        for i, row_mask in ipairs(mask) do
+            column_mask[i] = row_mask[1]
+            row_mask[i] = { unpack(row_mask, 2) }
+        end
+        for column in IterCombinations(rows, total, voltorbs, max_value, column_mask) do
             local new_row_totals = { unpack(row_totals) }
             local new_row_voltorbs = { unpack(row_voltorbs) }
             for i, value in ipairs(column) do
@@ -154,13 +187,15 @@ local function search_helper(rows, columns, column_totals, row_totals, column_vo
                     new_row_totals[i] = new_row_totals[i] - value
                 end
             end
-            local result = search_helper(rows,
+            local result = search_helper(
+                rows,
                 columns - 1,
                 column_totals,
                 new_row_totals,
                 column_voltorbs,
                 new_row_voltorbs,
                 max_value,
+                mask,
                 lookup
             )
 
