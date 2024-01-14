@@ -38,18 +38,18 @@ local function iter_combinations(length, total, voltorbs, max_value, mask)
 end
 
 local function cache_key(rows, columns, column_totals, row_totals, column_voltorbs, row_voltorbs, max_value)
-    local key = rows .. "," .. columns .. "," .. max_value
+    local key = rows .. ',' .. columns .. ',' .. max_value
     for _, total in ipairs(column_totals) do
-        key = key .. "," .. total
+        key = key .. ',' .. total
     end
     for _, total in ipairs(row_totals) do
-        key = key .. "," .. total
+        key = key .. ',' .. total
     end
     for _, voltorbs in ipairs(column_voltorbs) do
-        key = key .. "," .. voltorbs
+        key = key .. ',' .. voltorbs
     end
     for _, voltorbs in ipairs(row_voltorbs) do
-        key = key .. "," .. voltorbs
+        key = key .. ',' .. voltorbs
     end
 
     return key
@@ -273,7 +273,7 @@ function Solve(column_totals, row_totals, column_voltorbs, row_voltorbs, max_val
             end
 
             local min_chance = 1
-            local min = { 1, 1 }
+            local min_i, min_j = 1, 1
             local all_known = true
             for i, row in ipairs(probs) do
                 for j, values in ipairs(row) do
@@ -282,12 +282,12 @@ function Solve(column_totals, row_totals, column_voltorbs, row_voltorbs, max_val
                             mask[i][j][value] = false
                         end
                     end
-                    if values[VOLTORB] < min_chance and not knowns[i][j] then
-                        min_chance = values[VOLTORB]
-                        min = { i, j }
-                    end
                     if not knowns[i][j] then
                         all_known = false
+                        if values[VOLTORB] < min_chance then
+                            min_chance = values[VOLTORB]
+                            min_i, min_j = i, j
+                        end
                     end
                 end
             end
@@ -296,14 +296,13 @@ function Solve(column_totals, row_totals, column_voltorbs, row_voltorbs, max_val
                 return true
             end
 
-            local flip = coroutine.yield({ min, min_chance })
+            local flip = coroutine.yield { min_i, min_j }
             if flip == VOLTORB then
                 return false
             end
-            local i, j = unpack(min)
-            knowns[i][j] = true
-            for value, _ in ipairs(mask[i][j]) do
-                mask[i][j][value] = value == flip
+            knowns[min_i][min_j] = true
+            for value, _ in ipairs(mask[min_i][min_j]) do
+                mask[min_i][min_j][value] = value == flip
             end
         end
     end)
