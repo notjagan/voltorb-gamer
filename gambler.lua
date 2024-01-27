@@ -1,3 +1,5 @@
+require("solver")
+
 LEFT_BOARD_PIXEL = 10
 TOP_BOARD_PIXEL = 10
 BOARD_OFFSET = 32
@@ -20,6 +22,9 @@ ROW_SUM_ONES_TOP_PIXEL = 8
 ROW_VOLTORBS_LEFT_PIXEL = 185
 ROW_VOLTORBS_TOP_PIXEL = 21
 NUMBER_COLOR = { 66, 66, 66 }
+PLAY_CURSOR_RIGHT_PIXEL = 250
+PLAY_CURSOR_TOP_PIXEL = 70
+PLAY_CURSOR_COLOR = { 255, 0, 0 }
 
 
 local function save_image(path, x, y, size_x, size_y)
@@ -126,7 +131,7 @@ local function get_board_value(i, j)
         return 2
     elseif match_image(X3_SPRITE, x, y) then
         return 3
-    elseif match_image(VOLTORB, x, y) then
+    elseif match_image(VOLTORB_SPRITE, x, y) then
         return 4
     else
         return nil
@@ -203,4 +208,129 @@ local function get_row_voltorbs()
         sums[j] = get_digit(ROW_VOLTORBS_LEFT_PIXEL, ROW_VOLTORBS_TOP_PIXEL + BOARD_OFFSET * (j - 1))
     end
     return sums
+end
+
+local function press(key, duration, delay)
+    duration = duration or 2
+    delay = delay or 5
+    if joypad.get()[key] then
+        joypad.set({ [key] = false })
+    end
+    joypad.set({ [key] = true })
+    for _ = 1, duration do
+        emu.frameadvance()
+    end
+    joypad.set({ [key] = false })
+    for _ = 1, delay do
+        emu.frameadvance()
+    end
+end
+
+local function move_cursor(i, j)
+    local x, y = get_cursor_position()
+    if x == nil then
+        return false
+    end
+    while x ~= i do
+        if x > i then
+            press("left")
+        else
+            press("right")
+        end
+        x, y = get_cursor_position()
+        if x == nil then
+            return false
+        end
+    end
+    while y ~= j do
+        if y > j then
+            press("up")
+        else
+            press("down")
+        end
+        x, y = get_cursor_position()
+        if x == nil then
+            return false
+        end
+    end
+    return true
+end
+
+local function is_board_revealed()
+    for i = 1, BOARD_WIDTH do
+        for j = 1, BOARD_WIDTH do
+            if not get_board_value(i, j) then
+                return false
+            end
+        end
+    end
+    return true
+end
+
+local function is_play_button_active()
+    local game_r, game_g, game_b = gui.getpixel(PLAY_CURSOR_RIGHT_PIXEL, PLAY_CURSOR_TOP_PIXEL)
+    local r, g, b = unpack(PLAY_CURSOR_COLOR)
+    return game_r == r and game_g == g and game_b == b
+end
+
+local function play_round()
+    while true do
+        if is_dialog_active() or is_board_revealed() then
+            press("A")
+        elseif #get_column_voltorbs() == 0 or get_cursor_position() == nil then
+            emu.frameadvance()
+        else
+            break
+        end
+    end
+    local co = Solve(get_column_sums(), get_row_sums(), get_column_voltorbs(), get_row_voltorbs())
+    local code, result = coroutine.resume(co)
+    while code do
+        if type(result) == "boolean" then
+            break
+        end
+
+        local j, i = unpack(result)
+        while get_cursor_position() == nil do
+            emu.frameadvance()
+        end
+        if not move_cursor(i, j) then
+            break
+        end
+        press("A")
+        local complete = false
+        while get_board_value(i, j) == nil do
+            press("A")
+            emu.frameadvance()
+            if is_board_revealed() then
+                complete = true
+            end
+        end
+        if complete then
+            break
+        end
+        local value = get_board_value(i, j)
+        for _ = 1, 10 do
+            emu.frameadvance()
+        end
+
+        while is_dialog_active() do
+            press("A")
+            if is_board_revealed() then
+                complete = true
+            end
+        end
+        if complete then
+            break
+        end
+
+        code, result = coroutine.resume(co, value)
+    end
+end
+
+while true do
+    play_round()
+    while not is_play_button_active() do
+        press("A")
+    end
 end
