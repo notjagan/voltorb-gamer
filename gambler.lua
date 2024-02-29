@@ -283,6 +283,7 @@ local function play_round()
             break
         end
     end
+
     local co = Solve(get_column_sums(), get_row_sums(), get_column_voltorbs(), get_row_voltorbs())
     local code, result = coroutine.resume(co)
     while code do
@@ -298,6 +299,7 @@ local function play_round()
             break
         end
         press("A")
+
         local complete = false
         while get_board_value(i, j) == nil do
             press("A")
@@ -309,6 +311,7 @@ local function play_round()
         if complete then
             break
         end
+
         local value = get_board_value(i, j)
         for _ = 1, 10 do
             emu.frameadvance()
